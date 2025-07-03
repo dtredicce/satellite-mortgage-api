@@ -64,12 +64,14 @@ def analyze_satellite_image(image_url):
 
         # Return analysis result
         return {
-            "orientation_degrees": round(orientation_deg, 2),
+            "orientation_degrees": float(round(orientation_deg, 2)),
             "orientation_direction": orientation_dir,
-            "perimeter_meters": round(perimeter_m, 1),
-            "area_sqm": round(area_m2, 1),
-            "side_lengths": [round(length, 1) for length in side_lengths],
-            "polygon_coords": coords
+            "perimeter_meters": float(round(perimeter_m, 1)),
+            "area_sqm": float(round(area_m2, 1)),
+            "side_lengths": [float(round(length, 1)) for length in side_lengths],
+            "polygon_coords": [
+                [int(x), int(y)] for (x, y) in coords
+            ]
         }
 
     except Exception as e:
