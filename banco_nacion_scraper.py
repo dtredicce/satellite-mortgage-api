@@ -1,4 +1,6 @@
+import asyncio
 from playwright.sync_api import sync_playwright
+import time
 
 def simulate_banco_nacion(data):
     valor_vivienda = data.get("valor_vivienda")
@@ -6,57 +8,60 @@ def simulate_banco_nacion(data):
     plazo = data.get("plazo")
     uso = data.get("uso")
 
-    destino_value = "adq_unica" if uso == "permanente" else "adq_segunda"
-
-    results = []
+    print(">>> Simulación Banco Nación")
+    print(f"    - valor_vivienda: {valor_vivienda}")
+    print(f"    - monto_credito: {monto_credito}")
+    print(f"    - plazo: {plazo}")
+    print(f"    - uso: {uso}")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
-        page = context.new_page()
+        try:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context()
+            page = context.new_page()
 
-        for cobra_haberes in ["Si", "No"]:
-            page.goto("https://bna.com.ar/Personas/SimuladorHipotecariosUva")
+            print(">>> Abriendo página Banco Nación...")
+            page.goto("https://www.bna.com.ar/Personas/SimuladorPrestamoUVACuotas", timeout=30000)
 
-            page.wait_for_selector("#Destino", timeout=10000)
-            page.select_option("#Destino", destino_value)
-            page.fill("#ValorVivienda", str(valor_vivienda))
-            page.select_option("#Plazo", str(plazo))
-            page.fill("#Monto", str(monto_credito))
-            page.select_option("#CobraHaberesBNA", cobra_haberes)
-            page.select_option("#AdhiereOpcionTopeCVS", "No")
+            # Completando campos
+            print(">>> Completando formulario...")
+            page.fill("#valorVivienda", str(valor_vivienda))
+            page.fill("#montoCredito", str(monto_credito))
+            page.fill("#plazo", str(plazo))
 
-            page.get_by_role("button", name="Calcular").click()
-
-            # Esperar a que aparezca el resultado o el mensaje de error
-            page.wait_for_timeout(2000)  # Breve pausa para que se procese el cálculo
-
-            error_element = page.query_selector('[data-valmsg-for="Monto"]')
-            if error_element and error_element.inner_text().strip():
-                error_msg = error_element.inner_text().strip()
-                results.append({
-                    "con_sueldo_en_banco": cobra_haberes == "Si",
-                    "error": error_msg
-                })
+            if uso == "permanente":
+                page.check("#tipoDestino1")
             else:
-                # Esperar que los resultados estén visibles
-                page.wait_for_selector("#cuota_pesos", timeout=10000)
+                page.check("#tipoDestino2")
 
-                cuota = page.query_selector("#cuota_pesos").inner_text()
-                tna = page.query_selector("#valor_tna").inner_text()
-                cft = page.query_selector("#cft_tea").inner_text()
-                ingresos = page.query_selector("#ingresos_necesarios_tit_cod").inner_text()
+            page.click("#btnSimular", timeout=10000)
 
+            # Esperar resultado
+            print(">>> Esperando resultado...")
+            page.wait_for_selector(".resSimu", timeout=10000)
+
+            cuotas = page.locator(".resSimu tbody tr")
+
+            results = []
+            for row in cuotas.all():
+                tds = row.locator("td").all_inner_texts()
                 results.append({
-                    "con_sueldo_en_banco": cobra_haberes == "Si",
-                    "cuota_pesos": cuota,
-                    "tna": tna,
-                    "cft_tea": cft,
-                    "sueldo_requerido": ingresos,
-                    "plazo_meses": int(plazo) * 12,
-                    "monto_credito": monto_credito
+                    "linea": tds[0],
+                    "cuota_inicial": tds[1],
+                    "tna": tds[2],
+                    "cftea": tds[3],
+                    "ingreso_minimo": tds[4],
+                    "monto_maximo": tds[5],
                 })
 
-        browser.close()
+            print(">>> Resultado extraído correctamente")
+            return results
 
-    return results
+        except Exception as e:
+            print(">>> ERROR durante simulación:", e)
+            return {"error": str(e)}
+        finally:
+            try:
+                browser.close()
+            except:
+                pass
